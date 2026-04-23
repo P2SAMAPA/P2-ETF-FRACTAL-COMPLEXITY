@@ -1,5 +1,6 @@
 """
 Fractal Regime Complexity Model – NaN‑safe version.
+Includes daily averaging over the full lookback window.
 """
 
 import numpy as np
@@ -58,7 +59,7 @@ class FractalComplexityModel:
 
     def compute_complexity_metrics(self, returns: pd.DataFrame) -> pd.DataFrame:
         corrs = self.compute_correlation_surface(returns)
-        dates = returns.index[self.window-1:]  # DatetimeIndex
+        dates = returns.index[self.window-1:]
         metrics = []
         for i in range(len(corrs)):
             corr = corrs[i]
@@ -70,6 +71,7 @@ class FractalComplexityModel:
         return pd.DataFrame(metrics).set_index('date')
 
     def compute_etf_contributions(self, returns: pd.DataFrame) -> pd.DataFrame:
+        """Single‑window contributions (last 63 days). Used for global mode or quick checks."""
         tickers = returns.columns.tolist()
         n_assets = len(tickers)
         if n_assets < 3:
@@ -112,7 +114,64 @@ class FractalComplexityModel:
             })
         return pd.DataFrame(contributions)
 
+    def compute_daily_avg_contributions(self, returns: pd.DataFrame) -> pd.DataFrame:
+        """
+        Average contributions over the entire daily lookback period (e.g. 504 days).
+        Samples ~40 correlation snapshots to stay fast.
+        """
+        tickers = returns.columns.tolist()
+        n_assets = len(tickers)
+        if n_assets < 3:
+            return pd.DataFrame()
+
+        n = len(returns)
+        step = max(1, (n - self.window) // 40)   # ~40 samples
+        start_idx = self.window - 1
+        idxs = list(range(start_idx, n, step))
+
+        sum_contrib = {t: {'lz': 0.0, 'samp': 0.0, 'tsallis': 0.0} for t in tickers}
+        valid = 0
+
+        for idx in idxs:
+            window_returns = returns.iloc[idx - self.window + 1 : idx + 1]
+            full_corr = window_returns.corr().values
+            full_flat = self._flatten_corr(full_corr)
+            full_lz = self._lempel_ziv_complexity(full_flat)
+            full_samp = self._sample_entropy(full_flat)
+            full_tsallis = self._tsallis_entropy(full_flat)
+
+            for ticker in tickers:
+                reduced_returns = window_returns.drop(columns=[ticker])
+                if reduced_returns.shape[1] < 2:
+                    continue
+                reduced_corr = reduced_returns.corr().values
+                reduced_flat = self._flatten_corr(reduced_corr)
+                sum_contrib[ticker]['lz'] += full_lz - self._lempel_ziv_complexity(reduced_flat)
+                sum_contrib[ticker]['samp'] += full_samp - self._sample_entropy(reduced_flat)
+                sum_contrib[ticker]['tsallis'] += full_tsallis - self._tsallis_entropy(reduced_flat)
+            valid += 1
+
+        contributions = []
+        for ticker in tickers:
+            avg_lz = self._safe_div(sum_contrib[ticker]['lz'], valid)
+            avg_samp = self._safe_div(sum_contrib[ticker]['samp'], valid)
+            avg_tsallis = self._safe_div(sum_contrib[ticker]['tsallis'], valid)
+            composite = (config.WEIGHT_LZ * avg_lz + 
+                         config.WEIGHT_SAMPEN * avg_samp + 
+                         config.WEIGHT_TSALLIS * avg_tsallis)
+            if np.isnan(composite):
+                composite = 0.0
+            contributions.append({
+                'ticker': ticker,
+                'contrib_lz': avg_lz if np.isfinite(avg_lz) else 0.0,
+                'contrib_samp': avg_samp if np.isfinite(avg_samp) else 0.0,
+                'contrib_tsallis': avg_tsallis if np.isfinite(avg_tsallis) else 0.0,
+                'composite': composite
+            })
+        return pd.DataFrame(contributions)
+
     def compute_global_contributions(self, returns: pd.DataFrame) -> pd.DataFrame:
+        """Averaged contributions over the full history (sampled)."""
         tickers = returns.columns.tolist()
         n_assets = len(tickers)
         if n_assets < 3:
