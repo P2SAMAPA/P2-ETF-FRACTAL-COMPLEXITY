@@ -28,7 +28,7 @@ UNIVERSES = {
 }
 
 # --- Data Periods ---
-DAILY_LOOKBACK = 252                  # Days for daily trading
+DAILY_LOOKBACK = 504                  # Changed from 252 to 504 days
 GLOBAL_TRAIN_START = "2008-01-01"     # Start date for global training
 
 # --- Complexity Parameters ---
@@ -37,7 +37,7 @@ LZIV_NORMALIZE = True                 # Normalize Lempel‑Ziv complexity to [0,
 SAMPLE_ENTROPY_M = 2                  # Embedding dimension
 SAMPLE_ENTROPY_R = 0.2                # Tolerance (fraction of std)
 TSALLIS_Q = 1.5                       # q parameter (non‑extensive)
-MIN_OBSERVATIONS = 252                # Minimum data required (for daily)
+MIN_OBSERVATIONS = 504                # Minimum data required for daily (now 504)
 GLOBAL_MIN_OBSERVATIONS = 1008        # Minimum data required for global (4 years)
 
 # --- Scoring ---
