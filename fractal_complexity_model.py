@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 import antropy as ant
+import config
 
 class FractalComplexityModel:
     def __init__(self, window=63, lziv_normalize=True, sample_m=2, sample_r=0.2, tsallis_q=1.5):
