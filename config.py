@@ -27,13 +27,18 @@ UNIVERSES = {
     "COMBINED": ALL_TICKERS
 }
 
+# --- Data Periods ---
+DAILY_LOOKBACK = 252                  # Days for daily trading
+GLOBAL_TRAIN_START = "2008-01-01"     # Start date for global training
+
 # --- Complexity Parameters ---
 ROLLING_WINDOW = 63                   # Days for correlation estimation
 LZIV_NORMALIZE = True                 # Normalize Lempel‑Ziv complexity to [0,1]
 SAMPLE_ENTROPY_M = 2                  # Embedding dimension
 SAMPLE_ENTROPY_R = 0.2                # Tolerance (fraction of std)
 TSALLIS_Q = 1.5                       # q parameter (non‑extensive)
-MIN_OBSERVATIONS = 252                # Minimum data required
+MIN_OBSERVATIONS = 504                # Minimum data required (for daily)
+GLOBAL_MIN_OBSERVATIONS = 1008        # Minimum data required for global (4 years)
 
 # --- Scoring ---
 WEIGHT_LZ = 0.33                      # Weight for Lempel‑Ziv contribution
@@ -43,7 +48,7 @@ WEIGHT_TSALLIS = 0.34                 # Weight for Tsallis contribution
 # --- Expected Return ---
 RETURN_LOOKBACK = 21                  # Days for raw expected return
 
-# --- Shrinking Windows ---
+# --- Shrinking Windows (optional) ---
 SHRINKING_WINDOW_START_YEARS = list(range(2010, 2025))
 
 # --- Date Handling ---
