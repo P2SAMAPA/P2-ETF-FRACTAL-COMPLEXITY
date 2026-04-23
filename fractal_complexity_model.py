@@ -58,14 +58,15 @@ class FractalComplexityModel:
 
     def compute_complexity_metrics(self, returns: pd.DataFrame) -> pd.DataFrame:
         corrs = self.compute_correlation_surface(returns)
-        dates = returns.index[self.window-1:]
+        dates = returns.index[self.window-1:]  # DatetimeIndex
         metrics = []
-        for corr in corrs:
+        for i in range(len(corrs)):
+            corr = corrs[i]
             flat = self._flatten_corr(corr)
             lziv = self._lempel_ziv_complexity(flat)
             samp = self._sample_entropy(flat)
             tsallis = self._tsallis_entropy(flat)
-            metrics.append({'date': dates.pop(0), 'lziv': lziv, 'samp_entropy': samp, 'tsallis': tsallis})
+            metrics.append({'date': dates[i], 'lziv': lziv, 'samp_entropy': samp, 'tsallis': tsallis})
         return pd.DataFrame(metrics).set_index('date')
 
     def compute_etf_contributions(self, returns: pd.DataFrame) -> pd.DataFrame:
@@ -122,7 +123,6 @@ class FractalComplexityModel:
         if n_windows == 0:
             return pd.DataFrame()
 
-        # Sample every 10th window for speed
         step = max(1, n_windows // 50)
         sampled_corrs = corrs[::step]
         sampled_returns_idx = np.arange(self.window-1, len(returns), step)
