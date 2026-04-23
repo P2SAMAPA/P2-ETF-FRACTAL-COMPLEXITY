@@ -20,3 +20,13 @@
 
 ## Universe
 FI/Commodities, Equity Sectors, Combined (23 ETFs)
+
+## Dashboard Features
+
+- **Two Main Tabs**: **Daily Trading** (last 252 days) and **Global Training** (full 2008–2026 dataset).
+- **Hero Cards**: Top pick with adjusted return and systemic complexity contribution.
+- **Top 3 Picks Table**: Detailed breakdown of LZ, Sample Entropy, and Tsallis contributions.
+- **All ETFs Table**: Full ranking with raw returns, complexity contributions, and adjusted returns.
+- **Explanation Expander**: How complexity metrics are computed and used.
+- **Next Trading Day**: U.S. market calendar integration.
+
