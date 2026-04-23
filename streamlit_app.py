@@ -1,5 +1,6 @@
 """
 Streamlit Dashboard for Fractal Regime Complexity Engine.
+Two main tabs: Daily Trading and Global Training.
 """
 
 import streamlit as st
@@ -49,6 +50,61 @@ def contrib_badge(val):
     else:
         return f'<span class="contrib-low">Low ({val:.3f})</span>'
 
+def display_mode_tab(mode_data: dict, mode_name: str):
+    """Display results for either 'daily' or 'global' mode."""
+    universes = mode_data.get('universes', {})
+    top_picks = mode_data.get('top_picks', {})
+
+    subtabs = st.tabs(["📊 Combined", "📈 Equity Sectors", "💰 FI/Commodities"])
+    universe_keys = ["COMBINED", "EQUITY_SECTORS", "FI_COMMODITIES"]
+
+    for subtab, key in zip(subtabs, universe_keys):
+        with subtab:
+            top = top_picks.get(key, [])
+            universe_data = universes.get(key, {})
+            if top:
+                pick = top[0]
+                ticker = pick['ticker']
+                ret = pick['expected_return_adj']
+                contrib = pick['complexity_contrib']
+                st.markdown(f"""
+                <div class="hero-card">
+                    <div style="font-size: 1.2rem; opacity: 0.8;">🌀 {mode_name} TOP PICK (Low Systemic Complexity)</div>
+                    <div class="hero-ticker">{ticker}</div>
+                    <div style="font-size: 1.5rem;">Adj Return: {ret*100:.2f}%</div>
+                    <div style="margin-top: 1rem;">Complexity Contrib: {contrib_badge(contrib)}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                st.markdown("### Top 3 Picks")
+                rows = []
+                for p in top:
+                    rows.append({
+                        "Ticker": p['ticker'],
+                        "Adj Return": f"{p['expected_return_adj']*100:.2f}%",
+                        "Complexity Contrib": f"{p['complexity_contrib']:.4f}",
+                        "LZ": f"{p['contrib_lz']:.4f}",
+                        "SampEn": f"{p['contrib_samp']:.4f}",
+                        "Tsallis": f"{p['contrib_tsallis']:.4f}"
+                    })
+                df = pd.DataFrame(rows)
+                st.dataframe(df, use_container_width=True, hide_index=True)
+
+                st.markdown("### All ETFs")
+                all_rows = []
+                for t, d in universe_data.items():
+                    all_rows.append({
+                        "Ticker": t,
+                        "Raw Return": f"{d['expected_return_raw']*100:.2f}%",
+                        "Complexity Contrib": f"{d['complexity_contrib']:.4f}",
+                        "Adj Return": f"{d['expected_return_adj']*100:.2f}%"
+                    })
+                df_all = pd.DataFrame(all_rows).sort_values("Adj Return", ascending=False)
+                st.dataframe(df_all, use_container_width=True, hide_index=True)
+            else:
+                st.info(f"No data for {key} in {mode_name} mode.")
+
+
 # --- Sidebar ---
 st.sidebar.markdown("## ⚙️ Configuration")
 calendar = USMarketCalendar()
@@ -63,70 +119,30 @@ st.markdown('<div>Lempel‑Ziv · Sample Entropy · Tsallis Entropy – Systemic
 with st.expander("📘 How It Works", expanded=False):
     st.markdown("""
     ### Complexity Metrics
-    - **Lempel‑Ziv Complexity**: Measures the number of distinct patterns in correlation sequences.
-    - **Sample Entropy**: Quantifies the regularity/predictability of correlation changes.
-    - **Tsallis Entropy (q=1.5)**: Non‑extensive entropy sensitive to tail dependencies.
-    
+    - **Lempel‑Ziv Complexity**: Measures pattern diversity in correlation sequences.
+    - **Sample Entropy**: Quantifies correlation predictability.
+    - **Tsallis Entropy (q=1.5)**: Tail‑sensitive correlation complexity.
+
     ### ETF Scoring
-    Each ETF's **systemic complexity contribution** is computed by removing it from the correlation matrix and measuring the drop in total complexity. Higher contribution = greater systemic importance.
-    
+    Each ETF's **systemic complexity contribution** is computed by removing it from the correlation matrix and measuring the drop. Higher contribution = greater systemic importance.
     **Adjusted Return** = Raw Return × (1 – 0.5 × Complexity Contribution)
-    *Systemic assets receive a penalty due to higher regime‑shift fragility.*
     """)
 
 if data is None:
     st.warning("No data available.")
     st.stop()
 
-daily = data['daily_trading']
-universes = daily['universes']
-top_picks = daily['top_picks']
+# --- Main Tabs: Daily and Global ---
+main_tab1, main_tab2 = st.tabs(["📋 Daily Trading", "🌍 Global Training"])
 
-tabs = st.tabs(["📊 Combined", "📈 Equity Sectors", "💰 FI/Commodities"])
-universe_keys = ["COMBINED", "EQUITY_SECTORS", "FI_COMMODITIES"]
+with main_tab1:
+    if 'daily' in data and data['daily'].get('universes'):
+        display_mode_tab(data['daily'], "Daily")
+    else:
+        st.warning("Daily data not available.")
 
-for tab, key in zip(tabs, universe_keys):
-    with tab:
-        top = top_picks.get(key, [])
-        universe_data = universes.get(key, {})
-        if top:
-            pick = top[0]
-            ticker = pick['ticker']
-            ret = pick['expected_return_adj']
-            contrib = pick['complexity_contrib']
-            st.markdown(f"""
-            <div class="hero-card">
-                <div style="font-size: 1.2rem; opacity: 0.8;">🌀 TOP PICK (Low Systemic Complexity)</div>
-                <div class="hero-ticker">{ticker}</div>
-                <div style="font-size: 1.5rem;">Adj Return: {ret*100:.2f}%</div>
-                <div style="margin-top: 1rem;">Complexity Contrib: {contrib_badge(contrib)}</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            st.markdown("### Top 3 Picks")
-            rows = []
-            for p in top:
-                rows.append({
-                    "Ticker": p['ticker'],
-                    "Adj Return": f"{p['expected_return_adj']*100:.2f}%",
-                    "Complexity Contrib": f"{p['complexity_contrib']:.4f}",
-                    "LZ": f"{p['contrib_lz']:.4f}",
-                    "SampEn": f"{p['contrib_samp']:.4f}",
-                    "Tsallis": f"{p['contrib_tsallis']:.4f}"
-                })
-            df = pd.DataFrame(rows)
-            st.dataframe(df, use_container_width=True, hide_index=True)
-
-            st.markdown("### All ETFs")
-            all_rows = []
-            for t, d in universe_data.items():
-                all_rows.append({
-                    "Ticker": t,
-                    "Raw Return": f"{d['expected_return_raw']*100:.2f}%",
-                    "Complexity Contrib": f"{d['complexity_contrib']:.4f}",
-                    "Adj Return": f"{d['expected_return_adj']*100:.2f}%"
-                })
-            df_all = pd.DataFrame(all_rows).sort_values("Adj Return", ascending=False)
-            st.dataframe(df_all, use_container_width=True, hide_index=True)
-        else:
-            st.info(f"No data for {key}")
+with main_tab2:
+    if 'global' in data and data['global'].get('universes'):
+        display_mode_tab(data['global'], "Global")
+    else:
+        st.warning("Global data not available.")
