@@ -1,6 +1,6 @@
 """
 Main training script for Fractal Regime Complexity Engine.
-Computes both daily (252d) and global (2008‑present) metrics with distinct contributions.
+Computes both daily (averaged over full lookback) and global metrics.
 """
 
 import json
@@ -13,9 +13,9 @@ from fractal_complexity_model import FractalComplexityModel
 import push_results
 
 def compute_daily_results(returns: pd.DataFrame, model: FractalComplexityModel) -> tuple:
-    """Daily mode: recent 252d window, single-window contributions."""
+    """Daily mode: average contributions over the full daily lookback period."""
     metrics_df = model.compute_complexity_metrics(returns)
-    contributions = model.compute_etf_contributions(returns)
+    contributions = model.compute_daily_avg_contributions(returns)  # <-- averaged over full 504d window
     expected_returns = model.compute_expected_return(returns)
     adj_returns = model.compute_complexity_adjusted_return(expected_returns, contributions)
 
@@ -55,8 +55,8 @@ def compute_daily_results(returns: pd.DataFrame, model: FractalComplexityModel) 
 def compute_global_results(returns: pd.DataFrame, model: FractalComplexityModel) -> tuple:
     """Global mode: full history, averaged contributions, long‑term expected return."""
     metrics_df = model.compute_complexity_metrics(returns)
-    contributions = model.compute_global_contributions(returns)  # averaged over full history
-    expected_returns = model.compute_global_expected_return(returns)  # long‑term average
+    contributions = model.compute_global_contributions(returns)
+    expected_returns = model.compute_global_expected_return(returns)
     adj_returns = model.compute_complexity_adjusted_return(expected_returns, contributions)
 
     universe_results = {}
@@ -115,7 +115,7 @@ def run_fractal_complexity():
         if len(returns) < config.MIN_OBSERVATIONS:
             continue
 
-        # Daily (recent 252 days)
+        # Daily (now averages over full DAILY_LOOKBACK window)
         daily_returns = returns.iloc[-config.DAILY_LOOKBACK:]
         if len(daily_returns) >= config.MIN_OBSERVATIONS:
             print("  Computing daily metrics...")
