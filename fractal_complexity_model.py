@@ -32,7 +32,6 @@ class FractalComplexityModel:
 
     def _lempel_ziv_complexity(self, seq: np.ndarray) -> float:
         """Lempel‑Ziv complexity of a sequence."""
-        # Convert to binary string via median threshold
         median = np.median(seq)
         binary = ''.join(['1' if x > median else '0' for x in seq])
         return ant.lziv_complexity(binary, normalize=self.lziv_normalize)
@@ -45,7 +44,6 @@ class FractalComplexityModel:
 
     def _tsallis_entropy(self, seq: np.ndarray) -> float:
         """Tsallis entropy (non‑extensive)."""
-        # Estimate probability distribution via histogram
         hist, _ = np.histogram(seq, bins='auto', density=True)
         hist = hist[hist > 0]
         if len(hist) == 0:
@@ -57,10 +55,7 @@ class FractalComplexityModel:
             return (1 - np.sum(hist ** q)) / (q - 1)
 
     def compute_complexity_metrics(self, returns: pd.DataFrame) -> pd.DataFrame:
-        """
-        Compute complexity metrics over rolling correlation matrices.
-        Returns a DataFrame with columns: date, lziv, samp_entropy, tsallis.
-        """
+        """Compute complexity metrics over rolling correlation matrices."""
         corrs = self.compute_correlation_surface(returns)
         dates = returns.index[self.window-1:]
         metrics = []
@@ -78,16 +73,12 @@ class FractalComplexityModel:
         return pd.DataFrame(metrics).set_index('date')
 
     def compute_etf_contributions(self, returns: pd.DataFrame) -> pd.DataFrame:
-        """
-        Compute each ETF's contribution to total complexity reduction.
-        Contribution = complexity of full correlation matrix - complexity of matrix without that ETF.
-        """
+        """Compute each ETF's contribution to total complexity reduction (single window)."""
         tickers = returns.columns.tolist()
         n_assets = len(tickers)
         if n_assets < 3:
             return pd.DataFrame()
         
-        # Full correlation matrix complexity for the most recent window
         recent_returns = returns.iloc[-self.window:]
         full_corr = recent_returns.corr().values
         full_flat = self._flatten_corr(full_corr)
@@ -106,7 +97,6 @@ class FractalComplexityModel:
             reduced_samp = self._sample_entropy(reduced_flat)
             reduced_tsallis = self._tsallis_entropy(reduced_flat)
             
-            # Contribution = reduction in complexity (higher = more systemic importance)
             contrib_lz = full_lziv - reduced_lziv
             contrib_samp = full_samp - reduced_samp
             contrib_tsallis = full_tsallis - reduced_tsallis
@@ -122,8 +112,67 @@ class FractalComplexityModel:
             })
         return pd.DataFrame(contributions)
 
+    def compute_global_contributions(self, returns: pd.DataFrame) -> pd.DataFrame:
+        """Compute contributions averaged over the full correlation surface history."""
+        tickers = returns.columns.tolist()
+        n_assets = len(tickers)
+        if n_assets < 3:
+            return pd.DataFrame()
+        
+        corrs = self.compute_correlation_surface(returns)  # all historical correlation matrices
+        n_windows = corrs.shape[0]
+        if n_windows == 0:
+            return pd.DataFrame()
+        
+        # Precompute full complexity for each window
+        full_metrics = []
+        for corr in corrs:
+            flat = self._flatten_corr(corr)
+            full_metrics.append({
+                'lziv': self._lempel_ziv_complexity(flat),
+                'samp': self._sample_entropy(flat),
+                'tsallis': self._tsallis_entropy(flat)
+            })
+        
+        # For each ETF, compute reduced complexity across all windows
+        sum_contrib = {t: {'lz': 0.0, 'samp': 0.0, 'tsallis': 0.0} for t in tickers}
+        valid_windows = 0
+        for i, corr in enumerate(corrs):
+            full = full_metrics[i]
+            # For speed, we can approximate by using only every Nth window
+            for ticker in tickers:
+                reduced_returns = returns.iloc[i:i+self.window].drop(columns=[ticker])
+                if reduced_returns.shape[1] < 2:
+                    continue
+                reduced_corr = reduced_returns.corr().values
+                reduced_flat = self._flatten_corr(reduced_corr)
+                reduced_lziv = self._lempel_ziv_complexity(reduced_flat)
+                reduced_samp = self._sample_entropy(reduced_flat)
+                reduced_tsallis = self._tsallis_entropy(reduced_flat)
+                
+                sum_contrib[ticker]['lz'] += (full['lziv'] - reduced_lziv)
+                sum_contrib[ticker]['samp'] += (full['samp'] - reduced_samp)
+                sum_contrib[ticker]['tsallis'] += (full['tsallis'] - reduced_tsallis)
+            valid_windows += 1
+        
+        contributions = []
+        for ticker in tickers:
+            avg_lz = sum_contrib[ticker]['lz'] / valid_windows if valid_windows > 0 else 0.0
+            avg_samp = sum_contrib[ticker]['samp'] / valid_windows if valid_windows > 0 else 0.0
+            avg_tsallis = sum_contrib[ticker]['tsallis'] / valid_windows if valid_windows > 0 else 0.0
+            contributions.append({
+                'ticker': ticker,
+                'contrib_lz': avg_lz,
+                'contrib_samp': avg_samp,
+                'contrib_tsallis': avg_tsallis,
+                'composite': (config.WEIGHT_LZ * avg_lz + 
+                              config.WEIGHT_SAMPEN * avg_samp + 
+                              config.WEIGHT_TSALLIS * avg_tsallis)
+            })
+        return pd.DataFrame(contributions)
+
     def compute_expected_return(self, returns: pd.DataFrame) -> pd.Series:
-        """Simple expected return: recent 21-day annualized."""
+        """21‑day annualized expected return."""
         exp_ret = {}
         for ticker in returns.columns:
             ret = returns[ticker]
@@ -133,18 +182,20 @@ class FractalComplexityModel:
                 exp_ret[ticker] = 0.0
         return pd.Series(exp_ret)
 
+    def compute_global_expected_return(self, returns: pd.DataFrame) -> pd.Series:
+        """Long‑term average annualized return (full history)."""
+        exp_ret = {}
+        for ticker in returns.columns:
+            ret = returns[ticker]
+            exp_ret[ticker] = ret.mean() * 252
+        return pd.Series(exp_ret)
+
     def compute_complexity_adjusted_return(self, expected_return: pd.Series,
                                            contributions: pd.DataFrame) -> pd.Series:
-        """
-        Adjust expected return by complexity contribution.
-        Higher complexity contribution (systemic importance) receives a negative adjustment,
-        as systemic assets are more fragile during regime shifts.
-        """
         contrib_map = contributions.set_index('ticker')['composite'].to_dict()
         adj_return = {}
         for ticker, exp in expected_return.items():
             contrib = contrib_map.get(ticker, 0.0)
-            # Cap contribution at reasonable values
             contrib = np.clip(contrib, -0.5, 0.5)
             adj_return[ticker] = exp * (1 - 0.5 * contrib)
         return pd.Series(adj_return)
