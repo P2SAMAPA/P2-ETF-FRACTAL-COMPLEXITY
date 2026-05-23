@@ -2,7 +2,7 @@ name: Daily Fractal Complexity Run
 
 on:
   schedule:
-    - cron: '30 00 * * 1-5'
+    - cron: '30 00 * * 1-6'
   workflow_dispatch:
 
 jobs:
