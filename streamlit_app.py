@@ -54,6 +54,7 @@ def display_mode_tab(mode_data: dict, mode_name: str):
     """Display results for either 'daily' or 'global' mode."""
     universes = mode_data.get('universes', {})
     top_picks = mode_data.get('top_picks', {})
+    complexity_history = mode_data.get('complexity_history', {})
 
     subtabs = st.tabs(["📊 Combined", "📈 Equity Sectors", "💰 FI/Commodities"])
     universe_keys = ["COMBINED", "EQUITY_SECTORS", "FI_COMMODITIES"]
@@ -62,6 +63,65 @@ def display_mode_tab(mode_data: dict, mode_name: str):
         with subtab:
             top = top_picks.get(key, [])
             universe_data = universes.get(key, {})
+            
+            # --- NEW: Regime History Plot ---
+            history = complexity_history.get(key, {})
+            # Check if we have the new v2.0 metrics in the history payload
+            if history and history.get('spectral_entropy'):
+                fig = go.Figure()
+                
+                # Spectral Entropy (Higher = More Complex/Diversified)
+                fig.add_trace(go.Scatter(
+                    x=history['date'], 
+                    y=history['spectral_entropy'],
+                    name='Spectral Entropy (Complexity)',
+                    line=dict(color='#1f77b4', width=2)
+                ))
+                
+                # Dominant Concentration (Higher = More Correlated/Simple)
+                fig.add_trace(go.Scatter(
+                    x=history['date'], 
+                    y=history['concentration'],
+                    name='Dominant Concentration (Correlation)',
+                    line=dict(color='#dc3545', width=2, dash='dot'),
+                    yaxis='y2'
+                ))
+
+                fig.update_layout(
+                    title=f"{mode_name} {key.replace('_', ' ')} - Regime History",
+                    xaxis_title="Date",
+                    yaxis_title="Spectral Entropy",
+                    yaxis2=dict(
+                        title="Dominant Concentration", 
+                        overlaying='y', 
+                        side='right',
+                        range=[0, 1]
+                    ),
+                    height=350,
+                    margin=dict(l=40, r=40, t=50, b=20),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                    template="plotly_white"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            elif history and history.get('lziv'):
+                # Fallback for old v1 data so the dashboard doesn't break while transitioning
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=history['date'], 
+                    y=history['lziv'],
+                    name='LZ Complexity (v1 Legacy)',
+                    line=dict(color='#1f77b4', width=2)
+                ))
+                fig.update_layout(
+                    title=f"{mode_name} {key.replace('_', ' ')} - Regime History (Legacy Data)",
+                    xaxis_title="Date",
+                    height=300,
+                    margin=dict(l=40, r=40, t=50, b=20),
+                    template="plotly_white"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+            # --- Original Hero Card and Tables ---
             if top:
                 pick = top[0]
                 ticker = pick['ticker']
@@ -83,9 +143,9 @@ def display_mode_tab(mode_data: dict, mode_name: str):
                         "Ticker": p['ticker'],
                         "Adj Return": f"{p['expected_return_adj']*100:.2f}%",
                         "Complexity Contrib": f"{p['complexity_contrib']:.4f}",
-                        "LZ": f"{p['contrib_lz']:.4f}",
-                        "SampEn": f"{p['contrib_samp']:.4f}",
-                        "Tsallis": f"{p['contrib_tsallis']:.4f}"
+                        "Centrality (LZ proxy)": f"{p['contrib_lz']:.4f}",
+                        "Concentration (SampEn proxy)": f"{p['contrib_samp']:.4f}",
+                        "Marginal Rank (Tsallis proxy)": f"{p['contrib_tsallis']:.4f}"
                     })
                 df = pd.DataFrame(rows)
                 st.dataframe(df, use_container_width=True, hide_index=True)
@@ -114,18 +174,18 @@ if data:
     st.sidebar.markdown(f"**Run Date:** {data.get('run_date', 'Unknown')}")
 
 st.markdown('<div class="main-header">🌀 P2Quant Fractal Regime Complexity</div>', unsafe_allow_html=True)
-st.markdown('<div>Lempel‑Ziv · Sample Entropy · Tsallis Entropy – Systemic Complexity Scoring</div>', unsafe_allow_html=True)
+st.markdown('<div>Spectral Entropy · Eigenvector Centrality · Concentration – Systemic Complexity Scoring</div>', unsafe_allow_html=True)
 
 with st.expander("📘 How It Works", expanded=False):
     st.markdown("""
-    ### Complexity Metrics
-    - **Lempel‑Ziv Complexity**: Measures pattern diversity in correlation sequences.
-    - **Sample Entropy**: Quantifies correlation predictability.
-    - **Tsallis Entropy (q=1.5)**: Tail‑sensitive correlation complexity.
+    ### Complexity Metrics (v2.0 - Eigenvalue Based)
+    - **Spectral Entropy**: Measures how evenly distributed correlation eigenvalues are. Higher = more complex, less correlated market.
+    - **Eigenvector Centrality**: Measures an ETF's structural importance in the correlation network. High centrality = drives systemic risk.
+    - **Dominant Concentration**: How much an ETF contributes to the primary market correlation mode.
 
     ### ETF Scoring
-    Each ETF's **systemic complexity contribution** is computed by removing it from the correlation matrix and measuring the drop. Higher contribution = greater systemic importance.
-    **Adjusted Return** = Raw Return × (1 – 0.5 × Complexity Contribution)
+    Each ETF's **systemic complexity contribution** is computed by measuring its eigenvector centrality and its impact on the matrix's effective rank. Higher contribution = simplifies the market structure (drives correlation).
+    **Adjusted Return** = Raw Return × Non-linear Sigmoid adjustment based on Complexity Contribution.
     """)
 
 if data is None:
