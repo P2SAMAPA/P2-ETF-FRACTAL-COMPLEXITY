@@ -122,7 +122,7 @@ def run_fractal_complexity():
             daily_univ, daily_top, daily_hist = compute_daily_results(daily_returns, model)
             daily_results["universes"][universe_name] = daily_univ
             daily_results["top_picks"][universe_name] = daily_top
-            daily_results["complexity_history"][universe_name] = daily_hist.to_dict(orient='list')
+            daily_results["complexity_history"][universe_name] = daily_hist.reset_index().to_dict(orient='list')
 
         # Global (full history)
         if len(returns) >= config.GLOBAL_MIN_OBSERVATIONS:
@@ -130,7 +130,7 @@ def run_fractal_complexity():
             global_univ, global_top, global_hist = compute_global_results(returns, model)
             global_results["universes"][universe_name] = global_univ
             global_results["top_picks"][universe_name] = global_top
-            global_results["complexity_history"][universe_name] = global_hist.to_dict(orient='list')
+            global_results["complexity_history"][universe_name] = global_hist.reset_index().to_dict(orient='list')
 
     output_payload = {
         "run_date": config.TODAY,
